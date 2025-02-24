@@ -75,19 +75,18 @@ void readEEPROMvalues(void);
 
 void setup() {
   sleep_enable();
+  Serial.begin(9600);
+  Wire.begin();
+  lcd.begin(16, 2);
 
-  if (EEPROM.read(EEPROM_intervalTime)!= 0xff && EEPROM.read(EEPROM_wateringDuration) != 0xff){ //check to make sure EEPROM has been written to before (default value is 0xff)
+  if ((EEPROM.read(EEPROM_intervalTime)!= 0xff) && (EEPROM.read(EEPROM_wateringDuration) != 0xff)){ //check to make sure EEPROM has been written to before (default value is 0xff)
     readEEPROMvalues();
   }
-
 
   pinMode(pinFaultLED, OUTPUT);
   digitalWrite(pinFaultLED, LOW);
   pinMode(PIN_LCD_Backlight, OUTPUT);
 
-  lcd.begin(16, 2);
-  Serial.begin(9600);
-  Wire.begin();
   mainMenu.update();
 
   attachInterrupt(digitalPinToInterrupt(PIN_INT_Button), checkInputs, FALLING); //attach interrupt to button press
@@ -194,8 +193,8 @@ void checkInputs(void){
 }
 
 void updateEEPROM(void){
-  //EEPROM.write(EEPROM_intervalTime, intervalTime);
-  //EEPROM.write(EEPROM_wateringDuration, wateringDuration);
+  EEPROM.write(EEPROM_intervalTime, intervalTime);
+  EEPROM.write(EEPROM_wateringDuration, wateringDuration);
 
   Serial.println("EEPROM Values written:");
   Serial.print("Interval Time: ");
@@ -244,11 +243,11 @@ void alarmTriggered(void){
   digitalWrite(PIN_Solenoid, LOW);
 
   /*
-  open solenoid
-  turn on pump
-  delay for watering duration
-  turn off pump
-  close solenoid
+  open solenoid X
+  turn on pump X
+  delay for watering duration X
+  turn off pump X
+  close solenoid X
   set the alarm for the next watering time
     something to calculate the next watering time - next time = current time+interval time????
   clear alarm flag? something like that anyway 
@@ -261,4 +260,10 @@ void alarmTriggered(void){
 void readEEPROMvalues(void){
   intervalTime = EEPROM.read(EEPROM_intervalTime);
   wateringDuration = EEPROM.read(EEPROM_wateringDuration);
+
+  Serial.println("Interval time and watering duration global variables updated from EEPROM");
+  Serial.print("Interval Time: ");
+  Serial.println(intervalTime);
+  Serial.print("Watering Duration: ");
+  Serial.println(wateringDuration);
 }
