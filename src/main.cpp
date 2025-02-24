@@ -13,7 +13,7 @@ unsigned long timeSinceLastIP;
 const unsigned long sleepTime = 3000; //sleeep time in ms
 
 const int EEPROM_intervalTime = 0x00;
-const int EEPROM_wateringDuration = 0x01;
+const int EEPROM_wateringDuration = 0x01; //stores the value of watering duration in SECONDS
 
 const bool pullup = true;
 
@@ -25,7 +25,7 @@ const int PIN_Pump = 12;
 const int PIN_Solenoid = 13;
 
 int intervalTime = 4;
-int wateringDuration = 0;
+int wateringDuration = 0; //in SECONDS
 float batteryVoltage = 0;
 
 const int pinUpButton = A3;
@@ -213,7 +213,7 @@ void alarmTriggered(void){
 
   const bool floatSwitchLogicState = HIGH;
 
-  if (digitalRead(PIN_FloatSwitch) == floatSwitchLogicState){ //change logic states depending on if float switch is active HIGH or LOW
+  if (digitalRead(PIN_FloatSwitch) == floatSwitchLogicState){ //change logic states depending on if float switch is active HIGH or LOW, should be active LOW tho, to ensure fail safe
     Serial.println("Float switch triggered");
     while (digitalRead(PIN_FloatSwitch) == floatSwitchLogicState){//infinite loop, waiting for water to rise again. 
       digitalWrite(pinFaultLED, HIGH);
@@ -228,6 +228,16 @@ void alarmTriggered(void){
 
   }
 
+  digitalWrite(PIN_Solenoid, HIGH);
+  delay(1000); //ensure solenoid is open before pump starts
+  digitalWrite(PIN_Pump, HIGH);
+
+  delay(wateringDuration * 1000); //ms to seconds
+
+  digitalWrite(PIN_Pump, LOW);
+  delay(1000); //ensure pump is off before closing solenoid / let pipes depressurise
+  digitalWrite(PIN_Solenoid, LOW);
+  
   /*
   open solenoid
   turn on pump
