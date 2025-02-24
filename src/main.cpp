@@ -71,9 +71,15 @@ void sleepNow(void);
 
 void alarmTriggered(void);
 
+void readEEPROMvalues(void);
+
 void setup() {
-  // put your setup code here, to run once:
   sleep_enable();
+
+  if (EEPROM.read(EEPROM_intervalTime)!= 0xff && EEPROM.read(EEPROM_wateringDuration) != 0xff){ //check to make sure EEPROM has been written to before (default value is 0xff)
+    readEEPROMvalues();
+  }
+
 
   pinMode(pinFaultLED, OUTPUT);
   digitalWrite(pinFaultLED, LOW);
@@ -116,7 +122,6 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
   if (millis() < timeSinceLastIP){ //if milis timer has ticked back to zero
     timeSinceLastIP = millis(); //act as if there has just been an input
   }
@@ -237,7 +242,7 @@ void alarmTriggered(void){
   digitalWrite(PIN_Pump, LOW);
   delay(1000); //ensure pump is off before closing solenoid / let pipes depressurise
   digitalWrite(PIN_Solenoid, LOW);
-  
+
   /*
   open solenoid
   turn on pump
@@ -251,4 +256,9 @@ void alarmTriggered(void){
   just adding some text to test git
   */
 
+}
+
+void readEEPROMvalues(void){
+  intervalTime = EEPROM.read(EEPROM_intervalTime);
+  wateringDuration = EEPROM.read(EEPROM_wateringDuration);
 }
