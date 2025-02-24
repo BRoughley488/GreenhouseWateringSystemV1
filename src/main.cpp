@@ -55,13 +55,18 @@ LiquidLine LINE1_Battery(0,0, "Battery");
 LiquidLine LINE2_Battery(0,1, batteryVoltage,"V");
 LiquidScreen SCREEN_Battery(LINE1_Battery, LINE2_Battery);
 
+LiquidLine LINE1_WaterLow(0,0, "Water Low");
+LiquidLine LINE2_WaterLow(0,1, "Refill tank");
+LiquidScreen SCREEN_WaterLow(LINE1_WaterLow, LINE2_WaterLow);
+
 LiquidCrystal lcd(4, 5, 6, 7, 8, 9);
 DS3231 myRTC;
 
 LiquidMenu mainMenu(lcd, SCREEN_Test, SCREEN_Duration, SCREEN_interval_time, SCREEN_Battery);
 LiquidMenu OSFmenu(lcd, SCREEN_OSF);
+LiquidMenu waterLowMenu(lcd, SCREEN_WaterLow);
 
-LiquidSystem menu_system(mainMenu, OSFmenu);
+LiquidSystem menu_system(mainMenu, OSFmenu, waterLowMenu);
 
 void checkInputs(void);
 
@@ -219,12 +224,14 @@ void alarmTriggered(void){
 
   if (digitalRead(PIN_FloatSwitch) == floatSwitchLogicState){ //change logic states depending on if float switch is active HIGH or LOW, should be active LOW tho, to ensure fail safe
     Serial.println("Float switch triggered");
+    menu_system.change_menu(waterLowMenu);
     while (digitalRead(PIN_FloatSwitch) == floatSwitchLogicState){//infinite loop, waiting for water to rise again. 
       digitalWrite(pinFaultLED, HIGH);
       delay(100);
       digitalWrite(pinFaultLED, LOW);
       delay(100);
     }
+    menu_system.change_menu(mainMenu);
     delay(30000); //30 second delay to avoid accidental pump activation when water is too low
     alarmTriggered();//go back and check the pump
 
