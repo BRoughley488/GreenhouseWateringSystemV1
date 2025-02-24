@@ -204,7 +204,6 @@ void sleepNow(void){
   Serial.println("Going to sleep");
   delay(100); //delay to allow serial to finish sending
   digitalWrite(PIN_LCD_Backlight, LOW);
-
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);
   sleep_mode();
   delay(500);
@@ -239,6 +238,7 @@ void alarmTriggered(void){
     something to calculate the next watering time - next time = current time+interval time????
   clear alarm flag? something like that anyway 
   go back to sleep
+  just adding some text to test git
   */
 
 }
