@@ -6,7 +6,7 @@
 #include <avr/sleep.h>
 #include <avr/interrupt.h>
 #include <LiquidMenu.h>
-
+#include <time.h>
 
 unsigned long timeSinceLastIP;
 
@@ -78,11 +78,15 @@ void alarmTriggered(void);
 
 void readEEPROMvalues(void);
 
+void setNextAlarm(void);
+
 void setup() {
   sleep_enable();
   Serial.begin(9600);
   Wire.begin();
   lcd.begin(16, 2);
+
+  myRTC.setClockMode(false); //set ds3231 to 24 hour mode
 
   if ((EEPROM.read(EEPROM_intervalTime)!= 0xff) && (EEPROM.read(EEPROM_wateringDuration) != 0xff)){ //check to make sure EEPROM has been written to before (default value is 0xff)
     readEEPROMvalues();
@@ -129,6 +133,8 @@ void loop() {
   if (millis() < timeSinceLastIP){ //if milis timer has ticked back to zero
     timeSinceLastIP = millis(); //act as if there has just been an input
   }
+
+  setNextAlarm();
 
   if (millis() > timeSinceLastIP + sleepTime){
     updateEEPROM();
@@ -249,6 +255,8 @@ void alarmTriggered(void){
   delay(1000); //ensure pump is off before closing solenoid / let pipes depressurise
   digitalWrite(PIN_Solenoid, LOW);
 
+  setNextAlarm();
+
   /*
   open solenoid X
   turn on pump X
@@ -273,4 +281,39 @@ void readEEPROMvalues(void){
   Serial.println(intervalTime);
   Serial.print("Watering Duration: ");
   Serial.println(wateringDuration);
+}
+
+void setNextAlarm(void){
+
+  delay(1000); //for debugging purposes
+
+  DateTime now = RTClib::now(); //get the current time from the RTC
+
+  int nextAlarmTime;
+
+  if ((now.hour() + intervalTime) < 24){ //if the next alarm time is within the same day
+    nextAlarmTime = now.hour() + intervalTime;
+  }
+  else {
+    nextAlarmTime = (now.hour() + intervalTime) - 24; //if the next alarm time is the next day, subtract 24 hours
+  }
+
+  myRTC.setA1Time(0, nextAlarmTime, 0, 0, 0b00001000, false, false, false); //set the alarm to go off at the nextAlarmTime
+{
+  byte second, minute, hour, day, bits;
+  bool dy, h12, pm;
+
+  myRTC.getA1Time(day, hour, minute, second, bits, dy, h12, pm);
+
+  Serial.print("Next alarm set for: ");
+  Serial.print(second);
+  Serial.print(":");
+  Serial.print(minute);
+  Serial.print(":");
+  Serial.print(hour);
+  Serial.print(" : ");
+  Serial.println(day);
+  
+}
+
 }
