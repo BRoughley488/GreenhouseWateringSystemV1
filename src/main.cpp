@@ -10,7 +10,7 @@
 
 unsigned long timeSinceLastIP;
 
-const unsigned long sleepTime = 3000; //sleeep time in ms
+const unsigned long sleepTime = 10000; //sleeep time in ms
 
 const int EEPROM_intervalTime = 0x00;
 const int EEPROM_wateringDuration = 0x01; //stores the value of watering duration in SECONDS
@@ -25,7 +25,7 @@ const int PIN_Pump = 12;
 const int PIN_Solenoid = 13;
 
 int intervalTime = 4;
-int wateringDuration = 0; //in SECONDS
+volatile int wateringDuration = 1; //in MINUTES
 float batteryVoltage = 0;
 
 const int pinUpButton = A3;
@@ -33,7 +33,11 @@ const int pinDownButton = A2;
 const int pinLeftButton = A1;
 const int pinRightButton = A0;
 
+const int tempButton = A5;
+
 const int pinFaultLED = 11;
+
+bool alarmFlag = false;
 
 LiquidLine LINE1_OSF(0, 0, "Backup Battery");
 LiquidLine LINE2_OSF(0, 1, "Change Battery");
@@ -74,11 +78,19 @@ void updateEEPROM(void);
 
 void sleepNow(void);
 
-void alarmTriggered(void);
-
 void readEEPROMvalues(void);
 
 void setNextAlarm(void);
+
+void printTime(void);
+
+void resetTime();
+
+void printAlarmTime(void);
+
+void waterThePlants(void);
+
+void alarmTriggered(void);
 
 void setup() {
   sleep_enable();
@@ -87,6 +99,9 @@ void setup() {
   lcd.begin(16, 2);
 
   myRTC.setClockMode(false); //set ds3231 to 24 hour mode
+  myRTC.turnOnAlarm(1);
+
+  myRTC.setA1Time(0, 4, 0, 0, 0b00001000, false, false, false); //set alarm bits to 0b00001000, to trigger alarm every when hours match
 
   if ((EEPROM.read(EEPROM_intervalTime)!= 0xff) && (EEPROM.read(EEPROM_wateringDuration) != 0xff)){ //check to make sure EEPROM has been written to before (default value is 0xff)
     readEEPROMvalues();
@@ -95,6 +110,9 @@ void setup() {
   pinMode(pinFaultLED, OUTPUT);
   digitalWrite(pinFaultLED, LOW);
   pinMode(PIN_LCD_Backlight, OUTPUT);
+  pinMode(tempButton, INPUT_PULLUP);
+  pinMode(PIN_Solenoid, OUTPUT);
+  pinMode(PIN_Pump, OUTPUT);
 
   mainMenu.update();
 
@@ -134,11 +152,31 @@ void loop() {
     timeSinceLastIP = millis(); //act as if there has just been an input
   }
 
-  setNextAlarm();
+  if (digitalRead(tempButton) == LOW){
+    Serial.println("Temp button pressed");
+    resetTime();
+  }
+
+  printTime();
+  printAlarmTime();
+  alarmFlag = myRTC.checkIfAlarm(1); //for some reason i have to check the alarm this way, it won't work if i put this function in an if statement?!?!?!?!?!?!
+
+  delay(500); //just a delay so the serial monitor doesn't get spammed
+
+  if(alarmFlag){//check if the alarm flag is high, if it is, it will reset it and then call the water the plants fucntion
+    Serial.println("Alarm 1 triggered");
+    waterThePlants(); //uncomment when done testing
+    setNextAlarm();
+  }
+  else {
+    Serial.println("Alarm 1 not triggered");
+  }
+
 
   if (millis() > timeSinceLastIP + sleepTime){
     updateEEPROM();
-    delay(100);
+    setNextAlarm();
+    delay(100); //delay just to allow stuff to happen / finish before going to sleep
     sleepNow();
   }
   
@@ -224,54 +262,6 @@ void sleepNow(void){
   delay(500);
 }
 
-void alarmTriggered(void){
-
-  const bool floatSwitchLogicState = HIGH;
-
-  if (digitalRead(PIN_FloatSwitch) == floatSwitchLogicState){ //change logic states depending on if float switch is active HIGH or LOW, should be active LOW tho, to ensure fail safe
-    Serial.println("Float switch triggered");
-    menu_system.change_menu(waterLowMenu);
-    while (digitalRead(PIN_FloatSwitch) == floatSwitchLogicState){//infinite loop, waiting for water to rise again. 
-      digitalWrite(pinFaultLED, HIGH);
-      delay(100);
-      digitalWrite(pinFaultLED, LOW);
-      delay(100);
-    }
-    menu_system.change_menu(mainMenu);
-    delay(30000); //30 second delay to avoid accidental pump activation when water is too low
-    alarmTriggered();//go back and check the pump
-
-    //i wonder if we will need something to detach the button interrupts, to avoid exiting this loop
-
-  }
-
-  digitalWrite(PIN_Solenoid, HIGH);
-  delay(1000); //ensure solenoid is open before pump starts
-  digitalWrite(PIN_Pump, HIGH);
-
-  delay(wateringDuration * 1000); //ms to seconds
-
-  digitalWrite(PIN_Pump, LOW);
-  delay(1000); //ensure pump is off before closing solenoid / let pipes depressurise
-  digitalWrite(PIN_Solenoid, LOW);
-
-  setNextAlarm();
-
-  /*
-  open solenoid X
-  turn on pump X
-  delay for watering duration X
-  turn off pump X
-  close solenoid X
-  set the alarm for the next watering time
-    something to calculate the next watering time - next time = current time+interval time????
-  clear alarm flag? something like that anyway 
-  go back to sleep
-  just adding some text to test git
-  */
-
-}
-
 void readEEPROMvalues(void){
   intervalTime = EEPROM.read(EEPROM_intervalTime);
   wateringDuration = EEPROM.read(EEPROM_wateringDuration);
@@ -281,24 +271,19 @@ void readEEPROMvalues(void){
   Serial.println(intervalTime);
   Serial.print("Watering Duration: ");
   Serial.println(wateringDuration);
+  Serial.println("EEPROM Values Successfully read");
 }
 
 void setNextAlarm(void){
 
-  delay(1000); //for debugging purposes
+  //reset time to 0
+  myRTC.setSecond(0);
+  myRTC.setMinute(0);
+  myRTC.setHour(0);
+  myRTC.checkIfAlarm(1);//clear alarm flag - should already be done but you know
+  myRTC.turnOnAlarm(1);//again, shouldnt be needed but just in case
 
-  DateTime now = RTClib::now(); //get the current time from the RTC
-
-  int nextAlarmTime;
-
-  if ((now.hour() + intervalTime) < 24){ //if the next alarm time is within the same day
-    nextAlarmTime = now.hour() + intervalTime;
-  }
-  else {
-    nextAlarmTime = (now.hour() + intervalTime) - 24; //if the next alarm time is the next day, subtract 24 hours
-  }
-
-  myRTC.setA1Time(0, nextAlarmTime, 0, 0, 0b00001000, false, false, false); //set the alarm to go off at the nextAlarmTime
+  myRTC.setA1Time(0, intervalTime, 0, 0, 0b00001000, false, false, false); //alarm bits to alarm when hours, mins and seconds match 
 {
   byte second, minute, hour, day, bits;
   bool dy, h12, pm;
@@ -306,14 +291,72 @@ void setNextAlarm(void){
   myRTC.getA1Time(day, hour, minute, second, bits, dy, h12, pm);
 
   Serial.print("Next alarm set for: ");
-  Serial.print(second);
+  Serial.print(hour);
   Serial.print(":");
   Serial.print(minute);
   Serial.print(":");
-  Serial.print(hour);
+  Serial.print(second);
   Serial.print(" : ");
   Serial.println(day);
   
 }
 
+}
+
+void resetTime(){//for testing purposes, reset the time to 5s before the alarm triggers (on 4h mode)
+  myRTC.checkIfAlarm(1);
+  myRTC.setSecond(55);
+  myRTC.setMinute(59);
+  myRTC.setHour(intervalTime - 1);
+  Serial.println("Time reset to intervaltime-1:59:55");
+}
+
+void printTime(void){
+  int second, minute, hour;
+  bool h12, pm;
+
+  second = myRTC.getSecond();
+  minute = myRTC.getMinute();
+  hour = myRTC.getHour(h12, pm);
+
+  Serial.print(second);
+  Serial.print(":");
+  Serial.print(minute);
+  Serial.print(":");
+  Serial.println(hour);
+}
+
+void printAlarmTime(void){
+  byte second, minute, hour, day, bits;
+  bool dy, h12, pm;
+
+  myRTC.getA1Time(day, hour, minute, second, bits, dy, h12, pm);
+
+  Serial.print("Alarm 1:    ");
+  Serial.print(second);
+  Serial.print(":");
+  Serial.print(minute);
+  Serial.print(":");
+  Serial.println(hour);
+}
+
+void waterThePlants(void){
+  //Turns on the pump and solenoid for the duration specified (wateringDuration*1000
+  //and has a delay of 1 second between turning on the pump and solenoid
+  //to prevent the pump from starting before the solenoid is fully open
+  unsigned long wateringTimeInMinutes = (EEPROM.read(EEPROM_wateringDuration) * 60000); //must be cast to unsinged long as an int will overflow :(
+  Serial.println("Watering plants");
+  digitalWrite(PIN_Pump, HIGH);
+  delay(1000);
+  digitalWrite(PIN_Solenoid, HIGH);
+  Serial.println(wateringTimeInMinutes);
+  delay(wateringTimeInMinutes);//watering duration in minuntes (variable is ms, *1000 for s, *60 for minutes)
+  digitalWrite(PIN_Pump, LOW);
+  delay(1000);
+  digitalWrite(PIN_Solenoid, LOW);
+  Serial.println("Plants watered");
+}
+
+void alarmTriggered(void){
+  //do nothing, just here to wake up the arduino 
 }
